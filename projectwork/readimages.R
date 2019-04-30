@@ -126,6 +126,10 @@ plot(image2, colourscale=cscale,rescale=FALSE)
 
 #detect edges
 image2.g <- grayscale(image2)
+grayscale.values <- image2.g[,,,]
+nrow(grayscale.values)
+ncol(grayscale.values)
+
 gr <- imgradient(image2.g,"xy")
 gr
 plot(gr)
