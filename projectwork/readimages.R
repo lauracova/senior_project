@@ -17,6 +17,8 @@ c9: talking to passenger
 ############################################
 # read in images
 ############################################
+#This video shows what I did in python in 5 minutes
+#https://campus.datacamp.com/courses/convolutional-neural-networks-for-image-processing/image-processing-with-neural-networks?ex=1
 
 library(magick)
 #https://cran.r-project.org/web/packages/magick/vignettes/intro.html
