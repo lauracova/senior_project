@@ -1,21 +1,11 @@
 # Repository for my senior project
 
-*project work*- Contains work on project
+##Project Proposal
 
-Week1: 
+I plan to make a Shiny App that will allow a user to search for any name, state, or year and see visualizations and information about the name. Some visualizations I would like to have: 1. trend in name over time 2. rank of name 3. prediction of name 4. interactive map of names. I would also like to show the meaning of the name and famous people with that name.
 
-readimages.R- learned about reading images into r, got the RGB data from them, played with changing RGB values and changing image to grayscale, experimented with gradients, learned about datatypes/classes of images
+`imageprocessing`- contains all work for the image classification and object detection project
 
-images.md - notes on image classes and reading images
+`names` has the work for the names project
 
-resources.md - resources on machine learning (neural networks)
-
-5/2 YOLO.R - use the R package image.darknet and a tiny YOLO model for object detection in a given image, in just 3 lines of R code
-
-5/2 keras.R - attempt to use the keras package in R
-
-5/2 tensorflow- use for object detection
-
-5/2 cnn- Convolutional Neural Networks commonly used for image processing
-
-*final deliverables*- Will contain the final product of my project
+`final_deliverables`- Will contain the final product of my project
