@@ -1,51 +1,74 @@
-#
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
 #    http://shiny.rstudio.com/
 #
 
 library(shiny)
+library(shinydashboard)
+library(tidyverse)
+library(readr)
 
-# Define UI for application that draws a histogram
-ui <- fluidPage(
-##### usually have an input() and an output()
-   
-   # Application title
-   titlePanel("Old Faithful Geyser Data"),
-   
-   # Sidebar with a slider input for number of bins 
-   sidebarLayout(
-      sidebarPanel(
-         sliderInput("bins",
-                     "Number of bins:",
-                     min = 1,
-                     max = 50,
-                     value = 30)
+
+
+
+ui <- dashboardPage( skin="black",
+  
+  dashboardHeader(title="Names in America"),
+  
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Name Search", tabName = "names"),
+      menuItem("Popularity", tabName = "popular")
+    )
+  ),
+  
+  dashboardBody(
+    tabItems(
+      # First tab content
+      tabItem(tabName = "names",
+        fluidRow(
+          box(
+            textInput(inputId = "name", label = "Enter a first name:"),
+            actionButton(inputId = "update", label = "Update")
+          ), 
+          box(
+            plotOutput(outputId = "plot", hover = "plot_hover"),
+            verbatimTextOutput("info")
+            #change hover to click to get x and y click on-click instead
+          )
+        )
       ),
-      
-      # Show a plot of the generated distribution
-      mainPanel(
-         plotOutput("distPlot")
+      #second tab content
+      tabItem(tabName = "popular",
+              h2("Rank of Names")
       )
-   )
+    )
+  )
 )
 
-# Define server logic required to draw a histogram
-##########this function assembles the inputs into outputs
+
 server <- function(input, output) {
-   
-   #####render functions create the type of output you want
-   output$distPlot <- renderPlot({
-      # generate bins based on input$bins from ui.R
-      x    <- faithful[, 2] 
-      bins <- seq(min(x), max(x), length.out = input$bins + 1)
-      
-      # draw the histogram with the specified number of bins
-      hist(x, breaks = bins, col = 'darkgray', border = 'white')
-   })
+  
+  output$plot <- renderPlot({
+    input$update
+    
+    nameslist <- read.csv("../data/nameslist.csv") %>% select(-X) %>% 
+      filter(Name == input$name) %>% 
+      group_by(Name, Gender, Year) %>% 
+      summarise(Count=sum(as.numeric(Count)))
+    
+      nameslist %>% 
+        ggplot(aes(x=as.integer(Year), y=Count, color=Gender))+
+        geom_line(size=2)+
+        #geom_point(color="black", alpha=0.3)+
+        scale_color_manual(values=c("lightpink2", "steelblue1"))+
+        theme_minimal()+
+        labs(x="Year", title="Trend in Name Over Time")
+  })
+  
+  output$info <- renderText({
+    paste0("x=", input$plot_hover$x, "\ny=", input$plot_hover$y)
+  })
+  #change hover to click to get x and y click on-click instead
+  
 }
 
 # Run the application 

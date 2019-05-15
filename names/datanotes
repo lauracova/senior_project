@@ -1,0 +1,23 @@
+
+Name meanings
+
+I would like to get data that has first names and what they mean. -May have to webscrape
+
+
+
+Celebrity/Famous Names
+
+I would like to get data that has the full names, years, and images, of famous people and what they were famous for.
+
+This data has names, birth year-death year, and what they are famous for: https://www.kaggle.com/hugodarwood/celebrity-deaths (in data folder)
+
+https://github.com/prateekmehta59/Celebrity-Face-Recognition-Dataset
+
+#https://rstudio.github.io/shinydashboard/
+
+
+
+Interactive map example: https://shiny.rstudio.com/gallery/superzip-example.html
+Two file apps: 28 min of video tutorial
+
+adding events to graph at big changes

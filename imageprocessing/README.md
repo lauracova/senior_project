@@ -1,6 +1,4 @@
-*This folder contains all work for the image classification and object detection projects*
-
-Week1: 
+*This folder contains all work for the image classification and object detection project*
 
 readimages.R- learned about reading images into r, got the RGB data from them, played with changing RGB values and changing image to grayscale, experimented with gradients, learned about datatypes/classes of images
 
