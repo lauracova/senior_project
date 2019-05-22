@@ -5,7 +5,7 @@ library(shiny)
 library(shinydashboard)
 library(tidyverse)
 library(readr)
-
+library(plotly)
 
 
 
@@ -25,14 +25,21 @@ ui <- dashboardPage( skin="black",
       # First tab content
       tabItem(tabName = "names",
         fluidRow(
-          box(
+          box(width = 3,
             textInput(inputId = "name", label = "Enter a first name:"),
-            actionButton(inputId = "update", label = "Update")
-          ), 
+            selectInput(inputId = "gender", label = "Enter gender:", choices = list("Choose one","M", "F")),
+            submitButton(text = "Update")
+          ),
+          box(width = 3,
+              textInput(inputId = "name2", label = "Enter another first name:"),
+              selectInput(inputId = "gender2", label = "Enter gender:", choices = list("Choose one","M", "F")),
+              submitButton(text = "Update")
+          ),
           box(
-            plotOutput(outputId = "plot", hover = "plot_hover"),
-            verbatimTextOutput("info")
-            #change hover to click to get x and y click on-click instead
+            plotlyOutput(outputId = "plot")
+            ),
+          box(
+            textOutput(outputId="info")
           )
         )
       ),
@@ -47,27 +54,46 @@ ui <- dashboardPage( skin="black",
 
 server <- function(input, output) {
   
-  output$plot <- renderPlot({
-    input$update
+  output$plot <- renderPlotly({
     
-    nameslist <- read.csv("../data/nameslist.csv") %>% select(-X) %>% 
-      filter(Name == input$name) %>% 
+    name <- read.csv(paste('../data/splitnames/',input$name,sep='','.csv'))
+      
+    p <- name %>% 
+      filter(Gender == input$gender) %>% 
       group_by(Name, Gender, Year) %>% 
-      summarise(Count=sum(as.numeric(Count)))
-    
-      nameslist %>% 
-        ggplot(aes(x=as.integer(Year), y=Count, color=Gender))+
-        geom_line(size=2)+
-        #geom_point(color="black", alpha=0.3)+
-        scale_color_manual(values=c("lightpink2", "steelblue1"))+
+      summarise(Count=sum(Count))
+    if(input$gender=="F"){
+      p <- p %>% 
+        ggplot(aes(x=Year, y=Count))+
+        geom_line(size=2, color="lightpink2")+
         theme_minimal()+
-        labs(x="Year", title="Trend in Name Over Time")
+        labs(title="Trend in Name Over Time")+
+        coord_cartesian(xlim=c(1910,2017))
+    } else
+      p <- p %>% 
+        ggplot(aes(x=Year, y=Count))+
+        geom_line(size=2, color="steelblue1")+
+        theme_minimal()+
+        labs(title="Trend in Name Over Time")+
+        coord_cartesian(xlim=c(1910,2017))
+      ggplotly(p)
   })
   
-  output$info <- renderText({
-    paste0("x=", input$plot_hover$x, "\ny=", input$plot_hover$y)
+  output$info <- renderText({  #renderTable or Code
+    
+    #paste("Celebrities with the first name ", input$name, ":", sep="")?????????????
+    
+    name <- read.csv(paste('../data/splitnames/',input$name,sep='','.csv'))
+    celebrity <- read_csv("../data/celebrity.csv")
+    join <- left_join(name, celebrity, by="Name")
+    unique(join$info)
+    #info1 <- unique(join$info)
+    
+      #if(input$name == celebrity$first){
+      #  print(celebrity$info)
+      #}
+
   })
-  #change hover to click to get x and y click on-click instead
   
 }
 
