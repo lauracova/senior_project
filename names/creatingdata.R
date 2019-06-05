@@ -1,3 +1,7 @@
+########################
+#spliting data by name
+########################
+
 library(tictoc)
 tic();nameslist2<-read.csv("data/nameslist.csv");toc();
 tic();laura2<-read.csv("data/laura.csv");toc();
@@ -24,12 +28,12 @@ if(str_detect(name,"A") == "A"){
   path <- 'data/splitnames/a/'
 }
 
-for (name in levels(nameslist$Name)){
 
+# loop to split into datasets by name
+for (name in levels(nameslist$Name)){
   tmp=subset(nameslist,Name==name)
   fn=paste('data/splitnames/',name,sep='','.csv')
   write.csv(tmp,fn,row.names=FALSE)
-
   }
   
 Alabama <-read.csv("data/splitnames/Alabama.csv")
@@ -51,8 +55,12 @@ name <- read.csv(paste('data/splitnames/',user,sep='','.csv'))
 
 
 
+####################################################################
+# Celebrity Names
+####################################################################
 
-celebrity <- read_csv("data/celebrity_deaths_4.csv") %>% filter(nationality=="American") %>% 
+
+celebrity <- read.csv("data/celebrity_deaths_4.csv") %>% filter(nationality=="American") %>% 
   separate(name, into=c("Name"), sep=" ", remove=FALSE) %>% 
   mutate(info = paste(name," ","(",birth_year,"-", death_year,")",sep='')) %>% 
   select(Name, info) %>% 
@@ -67,6 +75,65 @@ celebrity <- read_csv("data/celebrity.csv")
   
 
 
+
+
+########################################################################
+# population
+########################################################################
+
+nameslist <-read.csv("data/nameslist.csv")
+
+population_yearF <- nameslist %>% 
+  filter(Gender=="F") %>% 
+  group_by(Year) %>% 
+  summarise(Population = sum(as.integer(Count)))
+
+write.csv(population_yearF, "data/populationYearF.csv", row.names=FALSE)
+
+population_yearM <- nameslist %>% 
+  filter(Gender=="M") %>% 
+  group_by(Year) %>% 
+  summarise(Population = sum(as.integer(Count)))
+write.csv(population_yearM, "data/populationYearM.csv", row.names=FALSE)
+
+
+
+population_state <- nameslist %>% 
+  group_by(State) %>% 
+  summarise(Count = sum(as.integer(Count)))
+
+population_gender <- nameslist %>% 
+  group_by(Gender) %>% 
+  summarise(Count = sum(as.integer(Count)))
+
+
+
+
+#######################################################################
+# rank
+#######################################################################
+
+nameslist <-read.csv("data/nameslist.csv")
+
+population_year <- nameslist %>% 
+  group_by(Year, Gender) %>% 
+  summarise(Population = sum(as.integer(Count)))
+
+nameslist <- nameslist %>% group_by(Name,Year,Gender) %>% 
+  summarise(Count=sum(Count)) %>% 
+  ungroup() %>% 
+  group_by(Year,Gender) %>% 
+  mutate(Rank=as.integer(rank(desc(Count), ties.method = "min")))
+
+nameslist<- left_join(nameslist, population_year, b=c("Gender", "Year")) %>% 
+  mutate(Percent=(Count/Population)/0.01)
+
+
+for (name in levels(nameslist$Name)){
+  tmp=subset(nameslist,Name==name)
+  fn=paste('data/splitnames_withrank/',name,sep='','.csv')
+  write.csv(tmp,fn,row.names=FALSE)
+}
 
 
 

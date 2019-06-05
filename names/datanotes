@@ -8,7 +8,6 @@ I would like to get data that has first names and what they mean. -May have to w
 Celebrity/Famous Names
 
 I would like to get data that has the full names, years, and images, of famous people and what they were famous for.
-
 This data has names, birth year-death year, and what they are famous for: https://www.kaggle.com/hugodarwood/celebrity-deaths (in data folder)
 
 https://github.com/prateekmehta59/Celebrity-Face-Recognition-Dataset
@@ -20,4 +19,33 @@ https://github.com/prateekmehta59/Celebrity-Face-Recognition-Dataset
 Interactive map example: https://shiny.rstudio.com/gallery/superzip-example.html
 Two file apps: 28 min of video tutorial
 
-adding events to graph at big changes
+
+
+adding events to graph at big changes- I could just locate the peak and label it? But i would just be finding the highest point rather than changes in slope
+
+
+guess gender
+
+-------------------------------------
+
+Questions:
+
+color messes up when you switch
+
+
+--------------------------------------
+
+Tasks:
+
+Slope
+
+Popularity/Rank
+
+similar names?
+
+
+
+
+
+
+
