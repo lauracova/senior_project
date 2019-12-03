@@ -30,7 +30,12 @@ guess gender
 
 Questions:
 
-color messes up when you switch
+
+how to get some select inputs to update automatically and others to not
+
+percentages in chloropleth map?
+
+predict future names
 
 
 --------------------------------------
@@ -44,6 +49,36 @@ Popularity/Rank
 similar names?
 
 
+predict future top names
+
+show similar names or similar spellings of names
+
+
+
+--------------
+
+chloropeth for name search - have to consider population
+
+max rank on plot
+
+comma in big numbers
+
+
+think the numbers are wrong in the chloropleth map!!!!
+
+https://rstudio.github.io/leaflet/shiny.html
+
+
+
+
+
+#-------------------------------------------------------
+
+replace errors with pretty text:
+HTTP error 404.
+file path in plots
+
+plotting the percent of male or female - library(plotrix) function gradient.rect()
 
 
 

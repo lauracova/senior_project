@@ -2,12 +2,11 @@
 
 library(shiny)
 library(shinydashboard)
-library(tidyverse)
-library(readr)
-library(plotly)
-library(ggrepel)
-library(stringr)
-library(rvest)
+
+pacman::p_load(tidyverse, USAboundaries, sf, geofacet, ggrepel, scales, readr, plotly, stringr, rvest, leaflet)
+
+topYearState<- read_csv("../data/topYearState.csv") %>% mutate(Year=as.integer(Year), Count=as.integer(Count), Rank=as.integer(Rank))
+topYearStateGender<- read_csv("../data/topYearStateGender.csv") %>% mutate(Year=as.integer(Year), Count=as.integer(Count), Rank=as.integer(Rank))
 
 ui <- dashboardPage( skin="black",
   
@@ -17,34 +16,35 @@ ui <- dashboardPage( skin="black",
     sidebarMenu(
       menuItem("Name Search", tabName = "names"),
       menuItem("Popular Name Rank", tabName = "popular")
-    )
+      )
   ),
   
   dashboardBody(
     tabItems(
       # First tab content
-      tabItem(tabName = "names", h2("Search a Name"),
+      tabItem(tabName = "names", h2("Search a First Name"),
         fluidRow(
           box(width = 3,
-            textInput(inputId = "name", label = "Enter a first name:"),
-            selectInput(inputId = "gender", label = "Enter gender:", choices = list("Choose one","M", "F")),
-            submitButton(text = "Update")
-          ),
+            textInput(inputId = "name", label = "Enter a first name:", placeholder = "Name"),
+            actionButton(inputId = "go", label = "Update"),
+            tags$head(tags$style("#go{margin-bottom: 30px;}")),
+            selectInput(inputId = "gender", label = "Enter gender:", choices = list("Choose one","M", "F"))
+            ),
           box(
             plotlyOutput(outputId = "plot"),
-            radioButtons(inputId = "button", label= NULL, choices = c("Count", "Percent"), inline=TRUE)
+            column(10, radioButtons(inputId = "button", label= NULL, choices = c("Count", "Percent", "Rank"), inline=TRUE))
             ),
           box(width = 3,
-              textInput(inputId = "name2", label = "Enter another first name to compare:"),
-              selectInput(inputId = "gender2", label = "Enter gender:", choices = list("Choose one","M", "F")),
-              submitButton(text = "Update")
+              textInput(inputId = "name2", label = "Enter another first name to compare:", placeholder = "Name"),
+              actionButton(inputId = "go2", label = "Update"),
+              tags$head(tags$style("#go2{margin-bottom: 30px;}")),
+              selectInput(inputId = "gender2", label = "Enter gender:", choices = list("Choose one","M", "F"))
           ),
           box(
-            textOutput(outputId = "famousTitle"),
-            tableOutput(outputId="info"),
-            tags$head(tags$style("#famousTitle{
-                                 font-size: 20px;
-                                 }" ))
+            leafletOutput("map"),
+            absolutePanel(top=20, right=25,
+              selectInput(inputId = "mapyear", label="Enter a year:", choices = c("All", 2017:1910))
+            )
           ),
           box(
             textOutput(outputId = "meaningTitle"),
@@ -57,135 +57,190 @@ ui <- dashboardPage( skin="black",
         )
       ),
       #second tab content
-      tabItem(tabName = "popular", h2("Rank of Names"),h4("Select to display rank of names:"),
+      tabItem(tabName = "popular", h2("Rank of Popular Names"),h4("Select to display ranking of the top 100 names:"),
 
           fluidRow(
-            column(4, selectInput(inputId = "populargender", "Gender:", c("All", "M", "F"))),
-            column(4, selectInput(inputId= "popularstate", "State:", c("All", state.abb))),
-            column(4, uiOutput(outputId="popularyear"))
+            column(4, selectInput(inputId="popgender", "Gender:", choices=c("All",c("M", "F")))),
+            column(4, selectInput("popyear", "Year:", choices=c("All", 2017:1910))),
+            column(4, selectInput(inputId= "popstate", "State:", c("All", state.abb)))
+
           ),
-          tableOutput("populartable")
+          tableOutput(outputId = "poptable")
           
       )
     )
   )
 )
 
-nameslist <-read.csv("../data/nameslist.csv")
 
 
-server <- function(input, output) {
+server <- function(input, output, session) {
   
-  output$popularyear <- renderUI({
-    selectInput("popyear", "Year:", choices=c("All",unique(as.character(nameslist$Year))))
+  
+  
+  name <- eventReactive(input$go, {
+    tmpfilename <- paste0(str_to_title(input$name), ".csv");
+    tmpfilepath <- paste('../data/splitnames_withrank/',tmpfilename,sep='');
+    if(tmpfilename %in% dir("../data/splitnames_withrank/")){
+                            read_csv(tmpfilepath, 
+                            col_types = list(col_character(), col_integer(), col_character(), 
+                                             col_integer(), col_integer(), col_integer(), col_double()))
+    }else{
+      data.frame(Name=input$name, Year=1910:2017, Gender=input$gender,Count=0, Rank=0, Population=1000000, Percent=0)
+    }
+    })
+  
+#  name <- eventReactive(input$go, {read_csv(paste('../data/splitnames_withrank/',input$name,sep='','.csv'),
+#                                              col_types = list(col_character(), col_integer(), col_character(),
+#                                                               col_integer(), col_integer(), col_integer(), col_double()))
+#  })
+  
+  name2 <- eventReactive(input$go2, {
+    tmpfilename <- paste0(str_to_title(input$name2), ".csv");
+    tmpfilepath <- paste('../data/splitnames_withrank/',tmpfilename,sep='');
+    if(tmpfilename %in% dir("../data/splitnames_withrank/")){
+      read_csv(tmpfilepath, 
+               col_types = list(col_character(), col_integer(), col_character(), 
+                                col_integer(), col_integer(), col_integer(), col_double()))
+    }else{
+      data.frame(Name=input$name2, Year=1910:2017, Gender=input$gender2,Count=0, Rank=0, Population=1000000, Percent=0)
+    }
   })
   
-  name <- reactive(read.csv(paste('../data/splitnames/',input$name,sep='','.csv'))%>% 
-    filter(Gender == input$gender) %>% 
-    group_by(Name, Gender, Year) %>% 
-    summarise(Count=sum(Count)))
+  
+  observe({
+    pred <- read_csv('../data/genderpred.csv')
+    g <- filter(pred, Name==str_to_title(input$name))[[4]]
+    updateSelectInput(session, "gender",label = "Enter gender:", choices = list("Choose one","M", "F"), selected = g)
+  })
+  
+  observe({
+    pred <- read_csv('../data/genderpred.csv')
+    g <- filter(pred, Name==str_to_title(input$name2))[[4]]
+    updateSelectInput(session, "gender2",label = "Enter gender:", choices = list("Choose one","M", "F"), selected = g)
+  })
   
   output$plot <- renderPlotly({
     
     req(input$name)
-    name <- name()
+    req(input$gender)
+
+    name <- name() %>% filter(Gender == input$gender)
+
+    if(input$name2!=""){
+      name2 <- name2() %>% filter(Gender == input$gender2)
+      name3 <- rbind(name, name2)
+    }
+  
     
     if(input$button=="Count"){
 
-      if(input$name2 != ""){
-        name2 <- read.csv(paste('../data/splitnames/',input$name2,sep='','.csv'))%>% 
-          filter(Gender == input$gender2) %>% 
-          group_by(Name, Gender, Year) %>% 
-          summarise(Count=sum(Count))
-        name3 <- rbind(name, name2)
-      }
-  
-      dat <- name %>% filter(Count == max(Count))
-      
       if(input$name2 == ""){
         if(input$gender=="F"){
           p <- name %>% ggplot(aes(x=Year, y=Count))+
             geom_line(size=1.5, color="lightpink2")+
-            geom_point(data=dat)+
             theme_minimal()+
             labs(title="Trend in Name Over Time in U.S.")+
             coord_cartesian(xlim=c(1910,2017))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+            scale_y_continuous(labels = comma)
         } else {
           p <- name %>% 
             ggplot(aes(x=Year, y=Count))+
             geom_line(size=1.5, color="steelblue1")+
-            geom_point(data=dat)+
             theme_minimal()+
             labs(title="Trend in Name Over Time in U.S.")+
             coord_cartesian(xlim=c(1910,2017))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
-      }} else if (input$name2 != ""){
+            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+            scale_y_continuous(labels = comma)
+          
+        }} else if (input$name2 != ""){
         if(input$gender=="F" & input$gender2=="F"){
           p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
             geom_line(size=1.5)+
             theme_minimal()+
             labs(title="Trend in Name Over Time in U.S.")+
             coord_cartesian(xlim=c(1910,2017))+
-            scale_color_manual(values=c("lightpink2", "pink"))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            scale_color_manual("",values=c("lightpink2", "pink"))+
+            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+            scale_y_continuous(labels = comma)
         } else if(input$gender=="F" & input$gender2=="M"){
-          p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
-            geom_line(size=1.5)+
-            theme_minimal()+
-            labs(title="Trend in Name Over Time in U.S.")+
-            coord_cartesian(xlim=c(1910,2017))+
-            scale_color_manual(values=c("lightpink2", "steelblue1"))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+          if(input$name == input$name2){
+            p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Gender))+
+              geom_line(size=1.5)+
+              theme_minimal()+
+              labs(title="Trend in Name Over Time in U.S.")+
+              coord_cartesian(xlim=c(1910,2017))+
+              scale_color_manual(values=c("lightpink2", "steelblue1"))+
+              theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+              scale_y_continuous(labels = comma)
+          }else{
+            if(input$name < input$name2){
+              p <- name3 %>%  ggplot(aes(x=Year, y=Count, color=Name))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title="Trend in Name Over Time in U.S.")+
+                coord_cartesian(xlim=c(1910,2017))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_continuous(labels = comma)+
+                scale_color_manual("",values=c("lightpink2", "steelblue1"))
+            } else if(input$name > input$name2){
+              p <- name3 %>%  ggplot(aes(x=Year, y=Count, color=Name))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title="Trend in Name Over Time in U.S.")+
+                coord_cartesian(xlim=c(1910,2017))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_continuous(labels = comma)+
+                scale_color_manual("",values=c("steelblue1", "lightpink2"))
+            }
+          }
         }else if(input$gender=="M" & input$gender2=="F"){
-          p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
-            geom_line(size=1.5)+
-            theme_minimal()+
-            labs(title="Trend in Name Over Time in U.S.")+
-            coord_cartesian(xlim=c(1910,2017))+
-            scale_color_manual(values=c("steelblue1", "lightpink2"))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+          if(input$name == input$name2){
+            p <- name3 %>% 
+              ggplot(aes(x=Year, y=Count, color=Gender))+
+              geom_line(size=1.5)+
+              theme_minimal()+
+              labs(title="Trend in Name Over Time in U.S.")+
+              coord_cartesian(xlim=c(1910,2017))+
+              scale_color_manual(values=c("lightpink2", "steelblue1"))
+              theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+              #scale_y_continuous(labels = comma)
+          } else{
+            if(input$name < input$name2){
+              p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title="Trend in Name Over Time in U.S.")+
+                coord_cartesian(xlim=c(1910,2017))+
+                scale_color_manual("",values=c("steelblue1","lightpink2"))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_continuous(labels = comma)
+            } else if(input$name > input$name2){
+              p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title="Trend in Name Over Time in U.S.")+
+                coord_cartesian(xlim=c(1910,2017))+
+                scale_color_manual("",values=c("lightpink2", "steelblue1"))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_continuous(labels = comma)
+            }
+          }
         }else if(input$gender=="M" & input$gender2=="M"){
           p <- name3 %>% ggplot(aes(x=Year, y=Count, color=Name))+
             geom_line(size=1.5)+
             theme_minimal()+
             labs(title="Trend in Name Over Time in U.S.")+
             coord_cartesian(xlim=c(1910,2017))+
-            scale_color_manual(values=c("steelblue1", "steelblue3"))+
-            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            scale_color_manual("",values=c("steelblue1", "steelblue3"))+
+            theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+            scale_y_continuous(labels = comma)
           
         }
       }
       
     }else if(input$button=="Percent"){
-      
-      #wrangling data
-      if(input$gender=="F"){
-        population_yearF<-read_csv("../data/populationYearF.csv")
-        name <- inner_join(name, population_yearF, by="Year") %>% 
-          mutate(Percent=(Count/Population)/0.01)
-      } else if (input$gender=="M"){
-        population_yearM<-read_csv("../data/populationYearM.csv")
-        name <- inner_join(name, population_yearM, by="Year") %>% 
-          mutate(Percent=(Count/Population)/0.01)
-      }
-      
-      if(input$name2 != ""){
-        name2 <- read.csv(paste('../data/splitnames/',input$name2,sep='','.csv'))%>% 
-          filter(Gender == input$gender2) %>% 
-          group_by(Name, Gender, Year) %>% 
-          summarise(Count=sum(Count))
-        if(input$gender2=="F"){
-          population_yearF<-read_csv("../data/populationYearF.csv")
-          name2 <- inner_join(name2, population_yearF, by="Year") %>% 
-            mutate(Percent=(Count/Population)/0.01)
-        } else if (input$gender2=="M"){
-          population_yearM<-read_csv("../data/populationYearM.csv")
-          name2 <- inner_join(name2, population_yearM, by="Year") %>% 
-            mutate(Percent=(Count/Population)/0.01)
-        }
-        name3 <- rbind(name, name2)
-      }
 
       #plots that show the percent
       if(input$name2 == ""){
@@ -211,34 +266,178 @@ server <- function(input, output) {
               theme_minimal()+
               labs(title=paste("Percent of Females named",input$name,"vs",input$name2))+
               coord_cartesian(xlim=c(1910,2017))+
-              scale_color_manual(values=c("lightpink2", "pink"))+
+              scale_color_manual("",values=c("lightpink2", "pink"))+
               theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
           } else if(input$gender=="F" & input$gender2=="M"){
-            p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
-              geom_line(size=1.5)+
-              theme_minimal()+
-              labs(title=paste("Percent of Females named",input$name,"vs Males named",input$name2))+
-              coord_cartesian(xlim=c(1910,2017))+
-              scale_color_manual(values=c("lightpink2", "steelblue1"))+
-              theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            if(input$name == input$name2){
+              p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Gender))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title=paste("Percent of Females named",input$name,"vs Males named",input$name2))+
+                coord_cartesian(xlim=c(1910,2017))+
+                scale_color_manual(values=c("lightpink2", "steelblue1"))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            } else {
+              if(input$name < input$name2){
+                p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Percent of Females named",input$name,"vs Males named",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("lightpink2", "steelblue1"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+              } else if(input$name > input$name2){
+                p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Percent of Females named",input$name,"vs Males named",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("steelblue1", "lightpink2"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+              }
+            }
           }else if(input$gender=="M" & input$gender2=="F"){
-            p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
-              geom_line(size=1.5)+
-              theme_minimal()+
-              labs(title=paste("Percent of Males named",input$name,"vs Females named",input$name2))+
-              coord_cartesian(xlim=c(1910,2017))+
-              scale_color_manual(values=c("steelblue1", "lightpink2"))+
-              theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            if(input$name == input$name2){
+              p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Gender))+
+                geom_line(size=1.5)+
+                theme_minimal()+
+                labs(title=paste("Percent of Males named",input$name,"vs Females named",input$name2))+
+                coord_cartesian(xlim=c(1910,2017))+
+                scale_color_manual(values=c("lightpink2","steelblue1"))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+            } else{
+              if(input$name < input$name2){
+                p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Percent of Males named",input$name,"vs Females named",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("steelblue1", "lightpink2"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+              }else if(input$name > input$name2){
+                p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Percent of Males named",input$name,"vs Females named",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("lightpink2", "steelblue1"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
+              }
+            }
           }else if(input$gender=="M" & input$gender2=="M"){
             p <- name3 %>% ggplot(aes(x=Year, y=Percent, color=Name))+
               geom_line(size=1.5)+
               theme_minimal()+
               labs(title=paste("Percent of Males named",input$name,"vs",input$name2))+
               coord_cartesian(xlim=c(1910,2017))+
-              scale_color_manual(values=c("steelblue1", "steelblue3"))+
+              scale_color_manual("",values=c("steelblue1", "steelblue3"))+
               theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))
           }
         }
+        }else if(input$button=="Rank"){
+          
+          #plots that show the rank
+          if(input$name2 == ""){
+            if(input$gender=="F"){
+              p <- name %>% ggplot(aes(x=Year, y=Rank))+
+                geom_line(size=1.5, color="lightpink2")+
+                theme_minimal()+
+                labs(title=paste("Ranking of Females named",input$name,"in U.S."))+
+                coord_cartesian(xlim=c(1910,2017))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_reverse(labels=comma)
+            } else {
+              p <- name %>% 
+                ggplot(aes(x=Year, y=Rank))+
+                geom_line(size=1.5, color="steelblue1")+
+                theme_minimal()+
+                labs(title=paste("Ranking of Males named",input$name,"in U.S."))+
+                coord_cartesian(xlim=c(1910,2017))+
+                theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                scale_y_reverse(labels=comma)
+            }} else if (input$name2 != ""){
+              if(input$gender=="F" & input$gender2=="F"){
+                p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Ranking of Females named",input$name,"vs",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("lightpink2", "pink"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                  scale_y_reverse(labels=comma)
+              } else if(input$gender=="F" & input$gender2=="M"){
+                if(input$name == input$name2){
+                  p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Gender))+
+                    geom_line(size=1.5)+
+                    theme_minimal()+
+                    labs(title=paste("Ranking of Females named",input$name,"vs Males named",input$name2))+
+                    coord_cartesian(xlim=c(1910,2017))+
+                    scale_color_manual(values=c("lightpink2", "steelblue1"))+
+                    theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                    scale_y_reverse(labels=comma)
+                } else {
+                  if(input$name < input$name2){
+                    p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                      geom_line(size=1.5)+
+                      theme_minimal()+
+                      labs(title=paste("Ranking of Females named",input$name,"vs Males named",input$name2))+
+                      coord_cartesian(xlim=c(1910,2017))+
+                      scale_color_manual("",values=c("lightpink2", "steelblue1"))+
+                      theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                      scale_y_reverse(labels=comma)
+                  } else if(input$name > input$name2){
+                    p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                      geom_line(size=1.5)+
+                      theme_minimal()+
+                      labs(title=paste("Ranking of Females named",input$name,"vs Males named",input$name2))+
+                      coord_cartesian(xlim=c(1910,2017))+
+                      scale_color_manual("",values=c("steelblue1", "lightpink2"))+
+                      theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                      scale_y_reverse(labels=comma)
+                  }
+                }
+              }else if(input$gender=="M" & input$gender2=="F"){
+                if(input$name == input$name2){
+                  p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Gender))+
+                    geom_line(size=1.5)+
+                    theme_minimal()+
+                    labs(title=paste("Ranking of Males named",input$name,"vs Females named",input$name2))+
+                    coord_cartesian(xlim=c(1910,2017))+
+                    scale_color_manual(values=c("lightpink2", "steelblue1"))+
+                    theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                    scale_y_reverse(labels=comma)
+                } else {
+                  if(input$name < input$name2){
+                    p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                      geom_line(size=1.5)+
+                      theme_minimal()+
+                      labs(title=paste("Ranking of Males named",input$name,"vs Females named",input$name2))+
+                      coord_cartesian(xlim=c(1910,2017))+
+                      scale_color_manual("",values=c("steelblue1", "lightpink2"))+
+                      theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                      scale_y_reverse(labels=comma)
+                  } else if(input$name > input$name2){
+                    p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                      geom_line(size=1.5)+
+                      theme_minimal()+
+                      labs(title=paste("Ranking of Males named",input$name,"vs Females named",input$name2))+
+                      coord_cartesian(xlim=c(1910,2017))+
+                      scale_color_manual("",values=c("lightpink2", "steelblue1"))+
+                      theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                      scale_y_reverse(labels=comma)
+                  }
+                }
+              }else if(input$gender=="M" & input$gender2=="M"){
+                p <- name3 %>% ggplot(aes(x=Year, y=Rank, color=Name))+
+                  geom_line(size=1.5)+
+                  theme_minimal()+
+                  labs(title=paste("Ranking of Males named",input$name,"vs",input$name2))+
+                  coord_cartesian(xlim=c(1910,2017))+
+                  scale_color_manual("",values=c("steelblue1", "steelblue3"))+
+                  theme(plot.margin=unit(c(1.2,0.1,0,0.2),"cm"))+
+                  scale_y_reverse(labels=comma)
+              }
+            }
       
     }
     
@@ -247,31 +446,77 @@ server <- function(input, output) {
     
     })
   
-  output$famousTitle <- renderText({
-    paste("Famous People with the Name",input$name)
+  
+  namewithstate <- eventReactive(input$go, {read_csv(paste('../data/splitnames/',input$name,sep='','.csv')) %>% 
+      mutate(Year=as.integer(Year), Count=as.integer(Count)) %>% 
+      filter(Gender == input$gender)
+                                            
   })
+  
+  output$map <- renderLeaflet({
+    
+    req(input$name)
+    namewithstate <- namewithstate()
+
+    
+    if(input$mapyear=="All"){
+      population_state <- read_csv("../data/population_state.csv") %>% filter(Gender==input$gender)
+      dat <- namewithstate %>% 
+        group_by(State) %>% 
+        summarise(Count=sum(Count)) %>% left_join(population_state, by="State") %>% 
+        mutate(Percent = round((Count/Population)/0.01, digits = 3))  %>% 
+        mutate(CountPerThousand = (Count*1000)/Population)
+      } else if (input$mapyear!="All"){
+      population_year_state <- read_csv("../data/population_year_state.csv") %>% 
+        filter(Gender==input$gender, Year==input$mapyear)
+      dat <- filter(namewithstate, Year==input$mapyear) %>% 
+        left_join(population_year_state, by=c("State", "Year", "Gender")) %>% 
+        mutate(Percent = round((Count/Population)/0.01, digits = 3))  %>% 
+        mutate(CountPerThousand = (Count*1000)/Population)
+    }
+    
+    states <- us_states(resolution="low") %>% filter(name!="Puerto Rico") %>% rename(State=state_abbr)
+
+    stat <- left_join(dat, states, by="State")
+    
+    if(input$gender=="F"){
+      pal <- colorNumeric("RdPu", domain=stat$Percent)
+    } else if(input$gender=="M"){
+      pal <- colorNumeric("GnBu", domain=stat$Percent)
+    }
+    
+    #install.packages("albersusa)
+    #spdf <- rmapshaper::ms_simplify(usa_sf(), keep = 0.1)
+    
+    epsg2163 <- leafletCRS(
+      crsClass = "L.Proj.CRS",
+      code = "EPSG:2163",
+      proj4def = "+proj=laea +lat_0=45 +lon_0=-100 +x_0=0 +y_0=0 +a=6370997 +b=6370997 +units=m +no_defs",
+      resolutions = 2^(16:7))
+    
+    leaflet(options = leafletOptions(crs = epsg2163)) %>% 
+      setView(lng = -95, lat = 37, zoom = 2) %>% 
+      addPolygons(data=states, fillColor = ~pal(stat$Percent), color = "white", weight=2,
+                  highlight = highlightOptions(weight=3, color="white", bringToFront = TRUE, opacity = 1),
+                  label= paste(states$name, stat$Percent, "%"), fillOpacity = 1) %>% 
+      addLegend(data=stat, pal= pal, values= ~Percent, opacity = 1, title = "Percent", position = "bottomleft")
+    
+  
+    })
+  
+
   
   output$meaningTitle <- renderText({
     paste("Meaning and History of the Name",input$name)
   })
   
-  output$info <- renderTable({
-    
-    req(input$name)
-    name <- name()
-    celebrity <- read.csv("../data/celebrity.csv")
-    join <- left_join(name, celebrity, by="Name")
-    pp <- unique(join$info)
-    ppp <- str_split(pp, ",")[[1]]
-    as.data.frame(ppp)
 
-  },colnames=FALSE, hover=TRUE)
   
   
   output$meaning <- renderUI({  
     
     req(input$name)
-    name <- str_to_lower(input$name)
+    name <- input$name
     address <- paste("https://www.behindthename.com/name/",name, sep="")
     my.html <- read_html(address)
     mysection <- html_nodes(my.html, "section")
@@ -281,9 +526,44 @@ server <- function(input, output) {
     
   })
   
-  output$populartable <- renderTable({
+  output$poptable <- renderTable({
+    
+    mydat <- data.frame()
+    
+    if(input$popgender!="All" & input$popyear=="All" & input$popstate=="All"){
+      topingender <-read_csv("../data/topingender.csv") %>%
+        mutate(Count=as.integer(Count), Rank=as.integer(Rank))
+      mydat <- filter(topingender, Gender==input$popgender)
+    }
+    if(input$popgender!="All" & input$popyear!="All" & input$popstate=="All"){
+      topinyearbyGender <-read_csv("../data/topinYearbyGender.csv", col_types = list(col_character(), col_integer(), col_character(), col_integer(), col_integer()))
+      mydat <- filter(topinyearbyGender, Gender==input$popgender & Year==input$popyear)
+    }
+    if(input$popgender!="All" & input$popyear=="All" & input$popstate!="All"){
+      topinstatebyGender <-read_csv("../data/topinstatebyGender.csv", col_types = list(col_character(), col_character(), col_character(), col_integer(), col_integer()))
+      mydat <- filter(topinstatebyGender, Gender==input$popgender & State==input$popstate)
+    }
+    if(input$popgender!="All" & input$popyear!="All" & input$popstate!="All"){
+      mydat <-filter(topYearStateGender, Year==input$popyear, State==input$popstate, Gender==input$popgender)
+    }
+    if(input$popgender=="All" & input$popyear!="All" & input$popstate=="All"){
+      topinyear <-read_csv("../data/topinyear.csv", col_types = list(col_character(), col_integer(), col_integer(), col_integer()))
+      mydat <- filter(topinyear, Year==input$popyear)
+    }
+    if(input$popgender=="All" & input$popyear=="All" & input$popstate!="All"){
+      topinstate <-read_csv("../data/topinstate.csv") %>% 
+        mutate(Count=as.integer(Count), Rank=as.integer(Rank))
+      mydat <- filter(topinstate, State==input$popstate)
+    }
+    if(input$popgender=="All" & input$popyear!="All" & input$popstate!="All"){
+      mydat <- filter(topYearState, Year==input$popyear, State==input$popstate)
+    }
+    mydat
+    
+  }, striped=TRUE, bordered=TRUE, hover=TRUE)
 
-  })
+  
+
   
 }
 
